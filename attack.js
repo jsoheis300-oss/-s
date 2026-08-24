@@ -1,4 +1,4 @@
-// attack.js - WebSocket版
+// attack.js - WebSocket
 (function() {
     'use strict';
 

